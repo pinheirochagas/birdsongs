@@ -9,6 +9,7 @@ from scipy.ndimage import median_filter
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
 app = FastAPI()
@@ -21,6 +22,11 @@ app.add_middleware(
 )
 
 SOUND_DIR = Path(__file__).resolve().parent.parent / "sound"
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# In Docker, dist is copied to /app/frontend/; locally it's frontend/dist/
+FRONTEND_DIR = _PROJECT_ROOT / "frontend"
+if (_PROJECT_ROOT / "frontend" / "dist").is_dir():
+    FRONTEND_DIR = _PROJECT_ROOT / "frontend" / "dist"
 
 
 @app.get("/api/sounds")
@@ -112,3 +118,15 @@ def get_spectrogram(filename: str):
     buf.seek(0)
 
     return StreamingResponse(buf, media_type="image/png")
+
+
+# Serve the React frontend (must be after all /api routes)
+if FRONTEND_DIR.is_dir():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        file = FRONTEND_DIR / full_path
+        if file.is_file():
+            return FileResponse(file)
+        return FileResponse(FRONTEND_DIR / "index.html")
